@@ -1,8 +1,6 @@
 import logging
-import requests
 from fastapi import FastAPI
 from route_error_handler import RouteErrorHandler
-from validation_exception_handler import setup_exception_handlers
 from logging_middleware import LoggingMiddleware
 from starlette_context.middleware import RawContextMiddleware
 from pydantic import BaseModel
@@ -18,11 +16,10 @@ app.router.route_class = RouteErrorHandler
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RawContextMiddleware)
 
-setup_exception_handlers(app)
 
 @app.get("/")
 async def get():
-    raise HTTPException(status_code=500)
+    raise HTTPException(status_code=422)
 
 
 class Body(BaseModel):

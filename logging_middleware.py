@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import traceback
 
 from typing import Awaitable
 from starlette.exceptions import HTTPException
@@ -17,23 +18,21 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Awaitable[Response]) -> Response:
         start = time.perf_counter()
         response: Response = None
+        exception: Exception = None
 
         try:
             response: Response = await call_next(request)
-        except HTTPException as ex:
-            response = ex
-            raise ex
-        except Exception as ex:
-            response = Response(status_code=500)
-            raise ex
+        except Exception as exception:
+            response = exception if isinstance(exception, HTTPException) else Response(status_code=500)
+            raise exception
         finally:
             duration = time.perf_counter() - start
-            self.log_request(request, response, duration)
+            self.log_request(request, response, duration, exception)
 
         return response
 
-    def log_request(self, request, response, duration):
-        log = json.dumps(self.build_log(request, response, duration), indent=4)
+    def log_request(self, request, response, duration, exception):
+        log = json.dumps(self.build_log(request, response, duration, exception), indent=4)
 
         if response.status_code < 400:
             self._logger.info(log)
@@ -42,7 +41,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         else:
             self._logger.error(log)
 
-    def build_log(self, request: Request, response, duration):
+    def build_log(self, request: Request, response, duration, exception):
         log = {
             "duration": duration,
             "status_code": response.status_code,
@@ -52,6 +51,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             log = log | context.data["diagnostics"]
 
         self._add_request_to_log(log, request)
+        self._add_exception_to_log(log, exception)
 
         return log
 
@@ -70,3 +70,16 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         if request.url.query:
             log["query"] = request.url.query
+
+    def _add_exception_to_log(self, log: dict, exception: Exception):
+        if not exception:
+            return
+
+        error_dict = vars(exception)
+
+        message = str(exception)
+        if message:
+            error_dict["message"] = message
+
+        error_dict["traceback"] = traceback.format_exc()
+        log["error"] = error_dict

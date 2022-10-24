@@ -1,9 +1,10 @@
 
 from typing import Callable
 
-from fastapi import Request, Response, HTTPException
+from fastapi import Request, Response
 from fastapi.routing import APIRoute
-from logger import log, log_exception
+from fastapi.exceptions import HTTPException
+from logger import log
 
 
 class RouteErrorHandler(APIRoute):
@@ -13,15 +14,15 @@ class RouteErrorHandler(APIRoute):
 
         async def custom_route_handler(request: Request) -> Response:
             try:
-                return await original_route_handler(request)
-            except Exception as ex:
-                log_exception(ex)
-                await self.log_body(request)
-                
-                if isinstance(ex, HTTPException):
-                    raise ex
+                response = await original_route_handler(request)
 
-                raise HTTPException(status_code=500, detail=str(ex))
+                if response.status_code >= 500:
+                    await self.log_body(request)
+
+            except Exception as ex:
+                if not isinstance(ex, HTTPException) or ex.status_code > 500:
+                    await self.log_body(request)
+                raise
 
         return custom_route_handler
 
